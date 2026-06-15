@@ -15,10 +15,10 @@ SNAPSHOT versions are left untouched.
 
 ```sh
 # Preview what would be deleted (safe, no changes made)
-./clean-old-deps --dry-run
+./clean-gradle-cache --dry-run
 
 # Delete old versions
-./clean-old-deps
+./clean-gradle-cache
 ```
 
 ### Example output
@@ -46,17 +46,17 @@ Clone the repo and make the script executable:
 ```sh
 git clone git@github.com:Abdallah-Abdelazim/gradle-cache-cleaner.git
 cd gradle-cache-cleaner
-chmod +x clean-old-deps
+chmod +x clean-gradle-cache
 ```
 
 Then run it directly:
 
 ```sh
-./clean-old-deps --dry-run
+./clean-gradle-cache --dry-run
 ```
 
 Or place it on your `PATH` for convenience:
 
 ```sh
-cp clean-old-deps /usr/local/bin/
+cp clean-gradle-cache /usr/local/bin/
 ```

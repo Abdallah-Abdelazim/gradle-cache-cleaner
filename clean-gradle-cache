@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# clean-old-deps.sh
+# clean-gradle-cache
 #
 # Scans Maven and Gradle dependency caches and deletes all but the latest
 # version of each artifact.
 #
 # Usage:
-#   ./clean-old-deps.sh            # delete old versions
-#   ./clean-old-deps.sh --dry-run  # preview without deleting
+#   ./clean-gradle-cache            # delete old versions
+#   ./clean-gradle-cache --dry-run  # preview without deleting
 
 set -euo pipefail
 
