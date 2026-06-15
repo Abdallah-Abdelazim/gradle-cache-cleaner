@@ -14,8 +14,11 @@ set -euo pipefail
 DRY_RUN=false
 ALL=false
 for arg in "$@"; do
-  [[ "$arg" == "--dry-run" ]] && DRY_RUN=true
-  [[ "$arg" == "--all" ]] && ALL=true
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    --all)     ALL=true ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--all] [--dry-run]"; exit 1 ;;
+  esac
 done
 
 $DRY_RUN && echo "[DRY RUN — nothing will be deleted]" && echo ""
@@ -80,7 +83,7 @@ prune_artifact() {
       echo "  deleting  $target  ($size)"
       rm -rf "$target"
     fi
-    (( deleted++ )) || true
+    (( deleted++ , 1 ))
   done
 }
 
@@ -90,13 +93,13 @@ prune_artifact() {
 M2="$HOME/.m2/repository"
 if [[ -d "$M2" ]]; then
   echo "Scanning $M2 ..."
-  while IFS= read -r artifact_dir; do
+  declare -A _seen_m2=()
+  while IFS= read -r -d '' pom; do
+    artifact_dir="$(dirname "$(dirname "$pom")")"
+    [[ -v _seen_m2["$artifact_dir"] ]] && continue
+    _seen_m2["$artifact_dir"]=1
     prune_artifact "$artifact_dir"
-  done < <(
-    find "$M2" -name "*.pom" -not -path "*/\.*" 2>/dev/null \
-      | awk -F'/' 'BEGIN{OFS="/"}{NF-=2; print}' \
-      | sort -u
-  )
+  done < <(find "$M2" -name "*.pom" -not -path "*/\.*" -print0 2>/dev/null)
 fi
 
 # ── Gradle files cache (~/.gradle/caches/modules-2/files-2.1) ────────────────
