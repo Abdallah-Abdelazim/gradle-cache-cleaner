@@ -17,29 +17,9 @@ done
 
 $DRY_RUN && echo "[DRY RUN — nothing will be deleted]" && echo ""
 
-# Sort version strings lowest-first using Python for numeric segment comparison,
-# so "1.9" correctly sorts before "1.10" (plain `sort` would reverse them).
-# Uses -c so Python reads the script from the argument, leaving stdin free for the pipe.
+# Sort version strings lowest-first using version-aware sort (-V flag).
 sort_versions() {
-  python3 -c '
-import sys, re
-
-def version_key(s):
-    parts = re.split(r"[.\-]", s.strip())
-    key = []
-    for p in parts:
-        m = re.match(r"^(\d+)(.*)", p)
-        if m:
-            key.append((0, int(m.group(1)), m.group(2).lower()))
-        else:
-            key.append((1, 0, p.lower()))
-    return key
-
-lines = [l for l in sys.stdin.read().splitlines() if l.strip()]
-lines.sort(key=version_key)
-for l in lines:
-    print(l)
-'
+  sort -V
 }
 
 deleted=0
