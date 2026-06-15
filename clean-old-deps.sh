@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# clean-old-deps.sh
+#
+# Scans Maven and Gradle dependency caches and deletes all but the latest
+# version of each artifact.
+#
+# Usage:
+#   ./clean-old-deps.sh            # delete old versions
+#   ./clean-old-deps.sh --dry-run  # preview without deleting
+
+set -euo pipefail
+
+DRY_RUN=false
+for arg in "$@"; do
+  [[ "$arg" == "--dry-run" ]] && DRY_RUN=true
+done
+
+$DRY_RUN && echo "[DRY RUN — nothing will be deleted]" && echo ""
+
+# Sort version strings lowest-first using Python for numeric segment comparison,
+# so "1.9" correctly sorts before "1.10" (plain `sort` would reverse them).
+# Uses -c so Python reads the script from the argument, leaving stdin free for the pipe.
+sort_versions() {
+  python3 -c '
+import sys, re
+
+def version_key(s):
+    parts = re.split(r"[.\-]", s.strip())
+    key = []
+    for p in parts:
+        m = re.match(r"^(\d+)(.*)", p)
+        if m:
+            key.append((0, int(m.group(1)), m.group(2).lower()))
+        else:
+            key.append((1, 0, p.lower()))
+    return key
+
+lines = [l for l in sys.stdin.read().splitlines() if l.strip()]
+lines.sort(key=version_key)
+for l in lines:
+    print(l)
+'
+}
+
+deleted=0
+
+# Prune an artifact directory: delete every versioned subdirectory except the latest.
+# Argument: path like ~/.m2/repository/com/example/foo
+#            or ~/.gradle/caches/.../files-2.1/com.example/foo
+prune_artifact() {
+  local dir="$1"
+
+  # Collect subdirs that start with a digit (version-like).
+  # Skip SNAPSHOT builds — they come from publishToMavenLocal and don't follow
+  # release ordering, so we leave them alone.
+  local ver_dirs=()
+  while IFS= read -r -d '' d; do
+    local name; name="$(basename "$d")"
+    [[ "$name" =~ ^[0-9] ]] && [[ "$name" != *-SNAPSHOT ]] && ver_dirs+=("$name")
+  done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+
+  # Nothing to prune when there is only one version present.
+  (( ${#ver_dirs[@]} <= 1 )) && return
+
+  # Sort; the last element after sorting is the latest version.
+  local sorted=()
+  while IFS= read -r line; do
+    sorted+=("$line")
+  done < <(printf '%s\n' "${ver_dirs[@]}" | sort_versions)
+
+  local last_idx=$(( ${#sorted[@]} - 1 ))
+  local latest="${sorted[$last_idx]}"
+
+  local i
+  for (( i = 0; i < ${#sorted[@]} - 1; i++ )); do
+    local target="$dir/${sorted[$i]}"
+    local size; size=$(du -sh "$target" 2>/dev/null | awk '{print $1}') || size="?"
+    if $DRY_RUN; then
+      echo "  [would delete] $target  ($size)  → keep $latest"
+    else
+      echo "  deleting  $target  ($size)"
+      rm -rf "$target"
+    fi
+    (( deleted++ )) || true
+  done
+}
+
+# ── Maven local repo (~/.m2/repository) ──────────────────────────────────────
+# Layout: REPO/group/path/artifact/VERSION/artifact-VERSION.pom
+# Strip the last two path components of every .pom to get the artifact dir.
+M2="$HOME/.m2/repository"
+if [[ -d "$M2" ]]; then
+  echo "Scanning $M2 ..."
+  while IFS= read -r artifact_dir; do
+    prune_artifact "$artifact_dir"
+  done < <(
+    find "$M2" -name "*.pom" -not -path "*/\.*" 2>/dev/null \
+      | awk -F'/' 'BEGIN{OFS="/"}{NF-=2; print}' \
+      | sort -u
+  )
+fi
+
+# ── Gradle files cache (~/.gradle/caches/modules-2/files-2.1) ────────────────
+# Layout: files-2.1/GROUP/ARTIFACT/VERSION/HASH/file
+# Artifact dirs are always exactly 2 levels deep.
+GRADLE="$HOME/.gradle/caches/modules-2/files-2.1"
+if [[ -d "$GRADLE" ]]; then
+  echo ""
+  echo "Scanning $GRADLE ..."
+  while IFS= read -r -d '' artifact_dir; do
+    prune_artifact "$artifact_dir"
+  done < <(find "$GRADLE" -mindepth 2 -maxdepth 2 -type d -print0 2>/dev/null)
+fi
+
+echo ""
+plural() { (( $1 == 1 )) && echo "directory" || echo "directories"; }
+if $DRY_RUN; then
+  echo "Dry run — $deleted version $(plural $deleted) would be removed."
+  echo "Run without --dry-run to delete."
+else
+  echo "Done — removed $deleted old version $(plural $deleted)."
+fi
