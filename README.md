@@ -1,24 +1,28 @@
 # gradle-cache-cleaner
 
-A shell script that reclaims disk space by removing old versions of cached Maven and Gradle dependencies, keeping only the latest version of each artifact.
+A shell script that reclaims disk space by removing cached Maven and Gradle dependencies.
 
 ## What it does
 
-Scans two caches and deletes all but the most recent version of each artifact:
+Scans two caches and deletes old versions of each artifact, keeping only the latest:
 
 - **`~/.m2/repository`** — Maven local repository
 - **`~/.gradle/caches/modules-2/files-2.1`** — Gradle module cache
 
-SNAPSHOT versions are left untouched.
+SNAPSHOT versions are left untouched by default.
 
 ## Usage
 
 ```sh
-# Preview what would be deleted (safe, no changes made)
-./clean-gradle-cache --dry-run
-
-# Delete old versions
+# Delete old versions, keep latest (SNAPSHOTs untouched)
 ./clean-gradle-cache
+
+# Delete everything — all versions, latest, and SNAPSHOTs
+./clean-gradle-cache --all
+
+# Preview without deleting (works with or without --all)
+./clean-gradle-cache --dry-run
+./clean-gradle-cache --all --dry-run
 ```
 
 ### Example output

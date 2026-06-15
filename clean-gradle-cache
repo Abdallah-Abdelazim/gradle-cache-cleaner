@@ -5,14 +5,17 @@
 # version of each artifact.
 #
 # Usage:
-#   ./clean-gradle-cache            # delete old versions
-#   ./clean-gradle-cache --dry-run  # preview without deleting
+#   ./clean-gradle-cache            # delete old versions, keep latest
+#   ./clean-gradle-cache --all      # delete all versions including latest and SNAPSHOTs
+#   ./clean-gradle-cache --dry-run  # preview without deleting (combine with --all)
 
 set -euo pipefail
 
 DRY_RUN=false
+ALL=false
 for arg in "$@"; do
   [[ "$arg" == "--dry-run" ]] && DRY_RUN=true
+  [[ "$arg" == "--all" ]] && ALL=true
 done
 
 $DRY_RUN && echo "[DRY RUN — nothing will be deleted]" && echo ""
@@ -25,22 +28,24 @@ sort_versions() {
 deleted=0
 
 # Prune an artifact directory: delete every versioned subdirectory except the latest.
+# With --all: delete every versioned subdirectory including SNAPSHOTs and the latest.
 # Argument: path like ~/.m2/repository/com/example/foo
 #            or ~/.gradle/caches/.../files-2.1/com.example/foo
 prune_artifact() {
   local dir="$1"
 
   # Collect subdirs that start with a digit (version-like).
-  # Skip SNAPSHOT builds — they come from publishToMavenLocal and don't follow
-  # release ordering, so we leave them alone.
+  # Skip SNAPSHOT builds unless --all is set.
   local ver_dirs=()
   while IFS= read -r -d '' d; do
     local name; name="$(basename "$d")"
-    [[ "$name" =~ ^[0-9] ]] && [[ "$name" != *-SNAPSHOT ]] && ver_dirs+=("$name")
+    [[ "$name" =~ ^[0-9] ]] || continue
+    $ALL || [[ "$name" != *-SNAPSHOT ]] || continue
+    ver_dirs+=("$name")
   done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
 
-  # Nothing to prune when there is only one version present.
-  (( ${#ver_dirs[@]} <= 1 )) && return
+  (( ${#ver_dirs[@]} == 0 )) && return
+  ! $ALL && (( ${#ver_dirs[@]} <= 1 )) && return
 
   # Sort; the last element after sorting is the latest version.
   local sorted=()
@@ -48,15 +53,17 @@ prune_artifact() {
     sorted+=("$line")
   done < <(printf '%s\n' "${ver_dirs[@]}" | sort_versions)
 
-  local last_idx=$(( ${#sorted[@]} - 1 ))
-  local latest="${sorted[$last_idx]}"
+  local latest="${sorted[$(( ${#sorted[@]} - 1 ))]}"
+  local limit=$(( $ALL ? ${#sorted[@]} : ${#sorted[@]} - 1 ))
 
   local i
-  for (( i = 0; i < ${#sorted[@]} - 1; i++ )); do
+  for (( i = 0; i < limit; i++ )); do
     local target="$dir/${sorted[$i]}"
     local size; size=$(du -sh "$target" 2>/dev/null | awk '{print $1}') || size="?"
     if $DRY_RUN; then
-      echo "  [would delete] $target  ($size)  → keep $latest"
+      $ALL \
+        && echo "  [would delete] $target  ($size)" \
+        || echo "  [would delete] $target  ($size)  → keep $latest"
     else
       echo "  deleting  $target  ($size)"
       rm -rf "$target"
