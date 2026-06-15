@@ -25,7 +25,16 @@ sort_versions() {
   sort -V
 }
 
+human_size() {
+  awk -v kb="$1" 'BEGIN {
+    if      (kb >= 1048576) printf "%.1fG", kb / 1048576
+    else if (kb >= 1024)    printf "%.1fM", kb / 1024
+    else                    printf "%dK",   kb
+  }'
+}
+
 deleted=0
+total_kb=0
 
 # Prune an artifact directory: delete every versioned subdirectory except the latest.
 # With --all: delete every versioned subdirectory including SNAPSHOTs and the latest.
@@ -54,12 +63,15 @@ prune_artifact() {
   done < <(printf '%s\n' "${ver_dirs[@]}" | sort_versions)
 
   local latest="${sorted[$(( ${#sorted[@]} - 1 ))]}"
-  local limit=$(( $ALL ? ${#sorted[@]} : ${#sorted[@]} - 1 ))
+  local limit
+  $ALL && limit=${#sorted[@]} || limit=$(( ${#sorted[@]} - 1 ))
 
   local i
   for (( i = 0; i < limit; i++ )); do
     local target="$dir/${sorted[$i]}"
-    local size; size=$(du -sh "$target" 2>/dev/null | awk '{print $1}') || size="?"
+    local kb; kb=$(du -sk "$target" 2>/dev/null | awk '{print $1}') || kb=0
+    local size; size=$(human_size "$kb")
+    total_kb=$(( total_kb + kb ))
     if $DRY_RUN; then
       $ALL \
         && echo "  [would delete] $target  ($size)" \
@@ -101,9 +113,10 @@ fi
 
 echo ""
 plural() { (( $1 == 1 )) && echo "directory" || echo "directories"; }
+total=$(human_size "$total_kb")
 if $DRY_RUN; then
-  echo "Dry run — $deleted version $(plural $deleted) would be removed."
+  echo "Dry run — $deleted version $(plural $deleted) would be removed ($total)."
   echo "Run without --dry-run to delete."
 else
-  echo "Done — removed $deleted old version $(plural $deleted)."
+  echo "Done — removed $deleted old version $(plural $deleted) ($total freed)."
 fi
