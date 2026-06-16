@@ -118,8 +118,16 @@ echo ""
 plural() { (( $1 == 1 )) && echo "directory" || echo "directories"; }
 total=$(human_size "$total_kb")
 if $DRY_RUN; then
-  echo "Dry run — $deleted version $(plural $deleted) would be removed ($total)."
-  echo "Run without --dry-run to delete."
+  if (( deleted == 0 )); then
+    echo "Dry run — nothing to remove."
+  else
+    echo "Dry run — $deleted version $(plural $deleted) would be removed ($total)."
+    echo "Run without --dry-run to delete."
+  fi
 else
-  echo "Done — removed $deleted old version $(plural $deleted) ($total freed)."
+  if (( deleted == 0 )); then
+    echo "Nothing to remove — cache is already clean."
+  else
+    echo "Done — removed $deleted old version $(plural $deleted) ($total freed)."
+  fi
 fi
